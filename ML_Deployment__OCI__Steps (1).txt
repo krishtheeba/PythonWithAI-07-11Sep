@@ -1,0 +1,171 @@
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+import joblib
+
+X, y = load_iris(return_X_y=True)
+
+'''
+Loads the classic Iris dataset, which contains measurements of iris flowers and 
+their species labels.
+X = features (sepal length, sepal width, petal length, petal width)
+y = target labels (species)
+
+load_iris() is a utility function in scikit-learn that loads the classic Iris dataset.
+
+By default, it returns a dictionary-like object called a Bunch that
+ contains several fields (features, targets, metadata, etc.).
+
+data = load_iris() -->dict 
+>>> data.keys()   
+dict_keys(['data', 'target', 'frame', 'target_names', 'DESCR', 'feature_names', 'filename'])
+
+You then access your data like this:
+X = data.data       # the feature matrix
+y = data.target     # the target labels
+
+So you need two lines to extract X and y.
+
+X, y = load_iris(return_X_y=True)
+It directly returns the features and targets as a tuple:
+X: the feature matrix (numpy array)
+y: the target vector (numpy array)
+This is just a shortcut to avoid having to access .data and .target manually.
+'''
+
+# Create and train the model
+
+model = RandomForestClassifier()
+model.fit(X, y)
+# Initializes a Random Forest classifier and trains it using the Iris data.
+
+
+joblib.dump(model, "iris_model.pkl") # Save the trained model
+
+print(" Model trained and saved.")
+
+'''
+Serializes (saves) the trained model to a file named iris_model.pkl.
+You'll use this saved file when registering the model in Oracle Cloud Infrastructure (OCI).
+'''
+
+
+# Register Model in the Model Catalog
+
+from ads.model import GenericModel
+
+model = GenericModel(
+    artifact_dir=".",
+    model_file_name="iris_model.pkl",
+    model_save_path="model_artifact"
+)
+'''
+ads.model.GenericModel comes from Oracle Accelerated Data Science (ADS) 
+SDK — used for model lifecycle management in OCI Data Science.
+
+Parameters:
+-----------
+artifact_dir="." : The current directory where your model files are located.
+
+model_file_name="iris_model.pkl": The name of your trained model file.
+
+model_save_path="model_artifact": The folder where ADS will create a model artifact (metadata + serialized model).
+
+So this creates a GenericModel object representing your trained scikit-learn model.
+
+'''
+
+model.prepare(
+    inference_conda_env="generalml_p38_cpu_v1",  # OCI prebuilt environment
+    force_overwrite=True
+).save("Iris Random Forest Model")
+
+'''
+prepare()
+Prepares your model artifact for deployment by:
+
+Including the serialized model file
+
+Adding metadata (framework, dependencies, schema, etc.)
+
+Specifying the runtime environment (inference_conda_env) used for inference
+
+Here you specify:
+
+inference_conda_env="generalml_p38_cpu_v1"
+→ an OCI prebuilt Conda environment (Python 3.8, general ML tools)
+
+force_overwrite=True
+→ Overwrites any existing artifacts in the same directory.
+
+.save("Iris Random Forest Model")
+
+Saves and registers your model in the OCI Model Catalog under the name
+"Iris Random Forest Model".
+
+➜ The catalog stores model metadata, files, and version info, 
+so you can deploy or reuse it later.
+
+
+'''
+
+
+# Deploy the model as an API endpoint:
+
+from ads.model.deployment import ModelDeployment
+
+deployment = ModelDeployment(
+    model_id="ocid1.datasciencemodel.oc1..xxxx",   # from your catalog
+    display_name="IrisModelDeployment"
+)
+
+deployment.create(wait_for_completion=True)
+
+'''
+from ads.model.deployment import ModelDeployment
+
+ModelDeployment is used to deploy models as REST API endpoints in OCI.
+
+model_id: The OCI model OCID (unique ID) of the model you registered earlier.
+
+display_name: The name that will appear in the OCI console for your deployment.
+
+deployment.create(wait_for_completion=True)
+
+Starts a deployment job that provisions the infrastructure (e.g., a containerized endpoint).
+
+The wait_for_completion=True flag means the script will wait until the deployment is ready before moving on.
+
+Once deployed, OCI provides you a REST API endpoint to send data and get predictions from your model.
+'''
+#########################################################################################
+
+# Call the Deployed Model API
+
+# You can now send prediction requests from any application:
+
+import requests, json
+
+url = "https://<your-model-endpoint>/predict"
+
+headers = {"Content-Type": "application/json"}
+
+payload = {
+    "data": [[5.1, 3.5, 1.4, 0.2]]  # sample flower measurements
+}
+
+response = requests.post(url, headers=headers, data=json.dumps(payload))
+
+print(response.json())
+
+{"prediction": [0]}
+
+#  The model is now live and returning predictions!
+
+# Step 5️⃣: Monitor and Manage
+
+# View metrics and logs in OCI Console (CPU usage, response time)
+
+# Update models with new versions easily
+
+# Auto-scale deployments if traffic increases
+
